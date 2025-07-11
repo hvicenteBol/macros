@@ -1,0 +1,9 @@
+streamlit>=1.33
+pandas
+yfinance
+plotly
+matplotlib
+seaborn
+datetime
+pandas_datareader
+
