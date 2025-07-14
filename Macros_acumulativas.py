@@ -11,7 +11,6 @@ warnings.filterwarnings('ignore')
 # ============== CONFIGURACIÓN STREAMLIT ==============
 st.set_page_config(page_title="Presidential Economics Dashboard", layout="wide")
 st.title("📊 Presidential Economics Dashboard")
-st.markdown('<h1 class="main-header">Análisis de variables macroeconómicas durante los mandatos presidenciales de EE.UU.</h1>', unsafe_allow_html=True)
 
 # ============== CONFIGURACIÓN DE VARIABLES MACRO ==============
 MACRO_VARIABLES = [
@@ -41,15 +40,6 @@ MACRO_VARIABLES = [
         "real_adjust": False,
         "color": "#2ca02c",
         "cumulative_return": False
-    },
-    {
-        "name": "Real GDP (Annualized)",
-        "id": "GDPC1",
-        "source": "fred",
-        "column": "GDPC1",
-        "real_adjust": False,
-        "color": "#9467bd",
-        "cumulative_return": True
     },
     {
         "name": "Inflation (CPI YoY)",
@@ -103,7 +93,7 @@ MACRO_VARIABLES = [
         "column": "PAYEMS",
         "real_adjust": False,
         "color": "#17becf",
-        "cumulative_return": True
+        "cumulative_return": False
     }
 ]
 
@@ -116,18 +106,18 @@ party_colors = {
 # ============== FUNCIONES ==============
 
 @st.cache_data
-def download_macro_data(var):
+def download_macro_data(datos_macro):
     """Descarga datos macroeconómicos"""
     try:
-        if var["source"] == "yahoo":
-            df = yf.download(var["id"], period='max')[[var["column"]]]
-        elif var["source"] == "fred":
-            df = pdr.get_data_fred(var["id"], start='1800-01-01')
+        if datos_macro["source"] == "yahoo":
+            df = yf.download(datos_macro["id"], period='max')[[datos_macro["column"]]]
+        elif datos_macro["source"] == "fred":
+            df = pdr.get_data_fred(datos_macro["id"], start='1800-01-01')
         else:
             raise ValueError("Fuente no soportada")
         return df
     except Exception as e:
-        st.error(f"Error descargando datos para {var['name']}: {str(e)}")
+        st.error(f"Error descargando datos para {datos_macro['name']}: {str(e)}")
         return pd.DataFrame()
 
 @st.cache_data
@@ -165,30 +155,30 @@ def get_presidents_data():
             'Democratic': 'Demócrata',
         }
         presidents['Party'] = presidents['Party'].map(party_map)
-        presidents['Name'] = presidents['Name'].str.split('[').str[0].str.strip()
+        presidents['Name'] = presidents['Name'].str.split('(').str[0].str.strip()
         
         return presidents
     except Exception as e:
         st.error(f"Error obteniendo datos de presidentes: {str(e)}")
         return pd.DataFrame()
 
-def get_nominal_returns(start_date, end_date, macro_data, var):
+def get_nominal_returns(start_date, end_date, precios_macro, datos_macro):
     """Calcula retornos nominales"""
     try:
-        period_data = macro_data.loc[start_date:end_date][var["column"]]
+        period_data = precios_macro.loc[start_date:end_date][datos_macro["column"]]
         if period_data.empty:
             return pd.Series(dtype=float)
-        if var["cumulative_return"]:
+        if datos_macro["cumulative_return"]:
             return (1 + period_data.pct_change()).cumprod().fillna(1)
         else:
-            return period_data
+            return period_data -  period_data.iloc[0] +1 ## Normalizar para que cada periodo empiece en 1
     except:
         return pd.Series(dtype=float)
 
-def get_real_returns(start_date, end_date, macro_data, cpi_data, var):
+def get_real_returns(start_date, end_date, macro_data, cpi_data, datos_macro):
     """Calcula retornos reales ajustados por inflación"""
     try:
-        prices = macro_data.loc[start_date:end_date][var["column"]]
+        prices = macro_data.loc[start_date:end_date][datos_macro["column"]]
         cpi = cpi_data.loc[start_date:end_date]['CPIAUCNS']
         df = pd.concat([prices, cpi], axis=1).dropna()
         df.columns = ['Close', 'CPI']
@@ -197,7 +187,7 @@ def get_real_returns(start_date, end_date, macro_data, cpi_data, var):
     except:
         return pd.Series(dtype=float)
 
-def get_party_periods(presidents_df):
+def get_party_periods(df_presidentes):
     """Agrupa períodos consecutivos del mismo partido"""
     party_periods = []
     current_party = None
@@ -205,7 +195,7 @@ def get_party_periods(presidents_df):
     current_end = None
     total_days = 0
     
-    for _, pres in presidents_df.iterrows():
+    for _, pres in df_presidentes.iterrows():
         if pres['Party'] != current_party:
             if current_party is not None:
                 party_periods.append({
@@ -345,7 +335,7 @@ def create_plot(var, macro_data, cpi_data, historical_presidents, mostrar_por_pa
     else:
         ax1.set_xlabel('Días desde el inicio del mandato', color='white')
         ax1.set_ylabel(var["name"], color='white')
-        ax1.set_title(f'{var["name"]} - Evolución durante mandatos presidenciales', color='white', fontsize=14, pad=10)
+        ax1.set_title(f'{var["name"]}', color='white', fontsize=14, pad=10)
         ax1.grid(True, alpha=0.2)
         ax1.tick_params(colors='white')
         for spine in ax1.spines.values():
@@ -363,8 +353,19 @@ def create_plot(var, macro_data, cpi_data, historical_presidents, mostrar_por_pa
 st.sidebar.markdown("## ⚙️ Filtros de Análisis")
 
 # Selección de variable macro
-macro_names = [var["name"] for var in MACRO_VARIABLES]
-selected_macro = st.sidebar.selectbox("📈 Selecciona variable macroeconómica:", macro_names)
+macro_names = [datos_variablemacro["name"] for datos_variablemacro in MACRO_VARIABLES]
+indice_macro_seleccionada = st.sidebar.selectbox("📈 Selecciona variable macroeconómica:",  range(len(macro_names)), format_func=lambda i: macro_names[i])
+
+# Cargar datos macro con antelacion para saber de cuantos datos disponemos
+with st.spinner(f"Descargando datos de {indice_macro_seleccionada}..."):
+    macro_data = download_macro_data(MACRO_VARIABLES[indice_macro_seleccionada])
+
+if macro_data.empty:
+    st.error("No se pudieron cargar los datos macroeconómicos")
+    st.stop()
+
+# Filtrar presidentes históricos
+start_date = macro_data.index[0].date()
 
 # Tipo de visualización
 mostrar_por_partido = st.sidebar.radio(
@@ -377,64 +378,81 @@ mostrar_por_partido = st.sidebar.radio(
 # Cargar datos de presidentes
 with st.spinner("Cargando datos de presidentes..."):
     presidents_df = get_presidents_data()
-
+    
 if presidents_df.empty:
     st.error("No se pudieron cargar los datos de presidentes")
     st.stop()
+
 
 # Selector de presidentes (solo si no es por partido)
 selected_presidents = None
 if not mostrar_por_partido:
     # Filtrar presidentes con datos disponibles
-    start_date = datetime(1929, 1, 1)  # Fecha base para datos históricos
+    start_date = macro_data.index[0].date()  # Fecha del primer dato macro para seleccionar los presidentes disponibles
     historical_presidents = presidents_df[presidents_df['Start'].dt.year >= start_date.year].reset_index(drop=True)
     
-    president_names = historical_presidents['Name'].tolist()
-    selected_presidents = st.sidebar.multiselect(
-        "🎯 Selecciona presidentes:",
-        president_names,
-        default=president_names  # Por defecto todos seleccionados
-    )
-    
+    president_names = [
+    f"{row['Name']} ({row['Start'].year if pd.notna(row['Start']) else '???'} - {row['End'].year if pd.notna(row['End']) else '???'})"
+    for _, row in historical_presidents.iterrows()
+]
+
+    st.sidebar.markdown("### 🎯 Selecciona presidentes:")
+
+    # Estado de selección (usamos session_state para persistencia)
+    if "selected_presidents" not in st.session_state:
+        st.session_state.selected_presidents = set()
+
+    # Botón para seleccionar todos
+
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if st.button("✅ Seleccionar todos"):
+            st.session_state.selected_presidents = set(president_names)
+
+    with col2:
+        if st.button("❌ Quitar todos"):
+            st.session_state.selected_presidents = set()
+
+    # Expander con checkboxes por presidente
+    with st.sidebar.expander("✔️ Presidentes disponibles", expanded=True):
+        updated_selection = set()
+        for i, name in enumerate(president_names):
+            key = f"president_checkbox_{i}"
+            checked = st.checkbox(name, value=name in st.session_state.selected_presidents, key=key)
+            if checked:
+                updated_selection.add(name)
+        st.session_state.selected_presidents = updated_selection
+        
+    selected_presidents = list(st.session_state.selected_presidents)
+
     if not selected_presidents:
         st.warning("Por favor selecciona al menos un presidente")
         st.stop()
 
+
 show = st.sidebar.button("📊 Generar Gráfico", type="primary")
 
 # Encontrar la variable seleccionada
-var = next((v for v in MACRO_VARIABLES if v["name"] == selected_macro), None)
+datos_variablemacro = next((v for v in MACRO_VARIABLES if v["name"] == MACRO_VARIABLES[indice_macro_seleccionada]["name"]), None)
 
-if var is None:
+if datos_variablemacro is None:
     st.error("Variable macroeconómica no encontrada")
     st.stop()
 
 
 # Botón para generar gráfico
 if show:
-    
-    # Cargar datos macro
-    with st.spinner(f"Descargando datos de {selected_macro}..."):
-        macro_data = download_macro_data(var)
-    
-    if macro_data.empty:
-        st.error("No se pudieron cargar los datos macroeconómicos")
-        st.stop()
-    
+     
     # Cargar CPI si es necesario
     cpi_data = None
-    if var["real_adjust"]:
+    if datos_variablemacro["real_adjust"]:
         with st.spinner("Descargando datos de inflación..."):
             start_date = macro_data.index[0].date()
             cpi_data = download_cpi(start_date)
-    
-    # Filtrar presidentes históricos
-    start_date = macro_data.index[0].date()
-    historical_presidents = presidents_df[presidents_df['Start'].dt.year >= start_date.year].reset_index(drop=True)
-    
+        
     # Crear gráfico
     with st.spinner("Generando gráfico..."):
-        fig = create_plot(var, macro_data, cpi_data, historical_presidents, mostrar_por_partido, selected_presidents)
+        fig = create_plot(datos_variablemacro, macro_data, cpi_data, historical_presidents, mostrar_por_partido, selected_presidents)
     
     # Mostrar gráfico
     st.pyplot(fig)
@@ -444,11 +462,11 @@ if show:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Variable", var["name"])
+        st.metric("Variable", datos_variablemacro["name"])
     with col2:
-        st.metric("Fuente", var["source"].upper())
+        st.metric("Fuente", datos_variablemacro["source"].upper())
     with col3:
-        st.metric("Ajuste inflación", "Sí" if var["real_adjust"] else "No")
+        st.metric("Ajuste inflación", "Sí" if datos_variablemacro["real_adjust"] else "No")
     
     if not mostrar_por_partido and selected_presidents:
         st.subheader("👥 Presidentes seleccionados")
