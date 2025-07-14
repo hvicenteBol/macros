@@ -9,8 +9,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ============== CONFIGURACIÓN STREAMLIT ==============
-st.set_page_config(page_title="Presidential Economics Dashboard", layout="wide")
-st.title("📊 Presidential Economics Dashboard")
+st.set_page_config(page_title="Cuadro de variables macroeconómicas", layout="wide")
+st.title("📊 Cuadro de variables macroeconómicas")
 
 # ============== CONFIGURACIÓN DE VARIABLES MACRO ==============
 MACRO_VARIABLES = [
@@ -94,6 +94,8 @@ party_colors = {
     'Demócrata': '#3333FF'
 }
 
+# Inicializar variables globales
+historical_presidents = None
 # ============== FUNCIONES ==============
 
 @st.cache_data
@@ -348,8 +350,7 @@ macro_names = [datos_variablemacro["name"] for datos_variablemacro in MACRO_VARI
 indice_macro_seleccionada = st.sidebar.selectbox("📈 Selecciona variable macroeconómica:",  range(len(macro_names)), format_func=lambda i: macro_names[i])
 
 # Cargar datos macro con antelacion para saber de cuantos datos disponemos
-with st.spinner(f"Descargando datos de {indice_macro_seleccionada}..."):
-    macro_data = download_macro_data(MACRO_VARIABLES[indice_macro_seleccionada])
+macro_data = download_macro_data(MACRO_VARIABLES[indice_macro_seleccionada])
 
 if macro_data.empty:
     st.error("No se pudieron cargar los datos macroeconómicos")
@@ -357,6 +358,7 @@ if macro_data.empty:
 
 # Filtrar presidentes históricos
 start_date = macro_data.index[0].date()
+
 
 # Tipo de visualización
 mostrar_por_partido = st.sidebar.radio(
@@ -374,51 +376,56 @@ if presidents_df.empty:
     st.error("No se pudieron cargar los datos de presidentes")
     st.stop()
 
+# Filtrar presidentes con datos disponibles. Se realiza aquí porque sirven para filtrar los partidos que se muestran en el gráfico
+# y también para los checkboxes de selección por presidente
+start_date = macro_data.index[0].date()
+historical_presidents = presidents_df[presidents_df['Start'].dt.year >= start_date.year].reset_index(drop=True)
+
 
 # Selector de presidentes (solo si no es por partido)
 selected_presidents = None
 if not mostrar_por_partido:
-    # Filtrar presidentes con datos disponibles
-    start_date = macro_data.index[0].date()  # Fecha del primer dato macro para seleccionar los presidentes disponibles
-    historical_presidents = presidents_df[presidents_df['Start'].dt.year >= start_date.year].reset_index(drop=True)
-    
-    president_names = [
-    f"{row['Name']} ({row['Start'].year if pd.notna(row['Start']) else '???'} - {row['End'].year if pd.notna(row['End']) else '???'})"
-    for _, row in historical_presidents.iterrows()
-]
+
+    # Diccionario: etiqueta visible → nombre real
+    display_to_name = {
+        f"{row['Name']} ({row['Start'].year if pd.notna(row['Start']) else '???'} - {row['End'].year if pd.notna(row['End']) else '???'})": row['Name']
+        for _, row in historical_presidents.iterrows()
+    }
+
+    display_names = list(display_to_name.keys())  # Lo que se muestra en los checkboxes
 
     st.sidebar.markdown("### 🎯 Selecciona presidentes:")
 
-    # Estado de selección (usamos session_state para persistencia)
+    # Inicializar estado si no existe
     if "selected_presidents" not in st.session_state:
-        st.session_state.selected_presidents = set()
+        st.session_state.selected_presidents = set(display_names)
 
-    # Botón para seleccionar todos
-
+    # Botones "Seleccionar todos" y "Quitar todos"
     col1, col2 = st.sidebar.columns(2)
     with col1:
         if st.button("✅ Seleccionar todos"):
-            st.session_state.selected_presidents = set(president_names)
-
+            st.session_state.selected_presidents = set(display_names)
     with col2:
         if st.button("❌ Quitar todos"):
             st.session_state.selected_presidents = set()
 
-    # Expander con checkboxes por presidente
+    # Expander con checkboxes
     with st.sidebar.expander("✔️ Presidentes disponibles", expanded=True):
         updated_selection = set()
-        for i, name in enumerate(president_names):
+        for i, label in enumerate(display_names):
             key = f"president_checkbox_{i}"
-            checked = st.checkbox(name, value=name in st.session_state.selected_presidents, key=key)
+            checked = st.checkbox(label, value=label in st.session_state.selected_presidents, key=key)
             if checked:
-                updated_selection.add(name)
+                updated_selection.add(label)
         st.session_state.selected_presidents = updated_selection
-        
-    selected_presidents = list(st.session_state.selected_presidents)
+
+    # Convertir la selección visible a nombres reales
+    selected_presidents = [display_to_name[label] for label in st.session_state.selected_presidents]
 
     if not selected_presidents:
         st.warning("Por favor selecciona al menos un presidente")
         st.stop()
+
 
 
 show = st.sidebar.button("📊 Generar Gráfico", type="primary")
@@ -440,7 +447,7 @@ if show:
         with st.spinner("Descargando datos de inflación..."):
             start_date = macro_data.index[0].date()
             cpi_data = download_cpi(start_date)
-        
+
     # Crear gráfico
     with st.spinner("Generando gráfico..."):
         fig = create_plot(datos_variablemacro, macro_data, cpi_data, historical_presidents, mostrar_por_partido, selected_presidents)
