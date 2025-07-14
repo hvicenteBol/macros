@@ -20,7 +20,6 @@ MACRO_VARIABLES = [
         "source": "yahoo",
         "column": "Close",
         "real_adjust": True,
-        "color": "#1f77b4",
         "cumulative_return": True
     },
     {
@@ -29,7 +28,6 @@ MACRO_VARIABLES = [
         "source": "yahoo",
         "column": "Close",
         "real_adjust": True,
-        "color": "#ff7f0e",
         "cumulative_return": True
     },
     {
@@ -38,7 +36,6 @@ MACRO_VARIABLES = [
         "source": "fred",
         "column": "UNRATE",
         "real_adjust": False,
-        "color": "#2ca02c",
         "cumulative_return": False
     },
     {
@@ -47,7 +44,6 @@ MACRO_VARIABLES = [
         "source": "fred",
         "column": "CPIAUCSL",
         "real_adjust": False,
-        "color": "#d62728",
         "cumulative_return": False
     },
     {
@@ -56,7 +52,6 @@ MACRO_VARIABLES = [
         "source": "fred",
         "column": "FEDFUNDS",
         "real_adjust": False,
-        "color": "#8c564b",
         "cumulative_return": False
     },
     {
@@ -65,7 +60,6 @@ MACRO_VARIABLES = [
         "source": "fred",
         "column": "GS10",
         "real_adjust": False,
-        "color": "#e377c2",
         "cumulative_return": False
     },
     {
@@ -74,7 +68,6 @@ MACRO_VARIABLES = [
         "source": "fred",
         "column": "PCE",
         "real_adjust": False,
-        "color": "#7f7f7f",
         "cumulative_return": True
     },
     {
@@ -83,7 +76,6 @@ MACRO_VARIABLES = [
         "source": "fred",
         "column": "M2SL",
         "real_adjust": False,
-        "color": "#bcbd22",
         "cumulative_return": True
     },
     {
@@ -92,7 +84,6 @@ MACRO_VARIABLES = [
         "source": "fred",
         "column": "PAYEMS",
         "real_adjust": False,
-        "color": "#17becf",
         "cumulative_return": False
     }
 ]
